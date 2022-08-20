@@ -1,3 +1,4 @@
+# tesstrain
 data/ground-truth/*
 !data/ground-truth/.gitkeep
 data/all-*
@@ -21,3 +22,21 @@ master.zip
 main.zip
 plot/*.LOG
 plot/ocrd*
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.vscode/
+
+# tesstrain extra
+fonts/
