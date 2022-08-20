@@ -20,6 +20,7 @@ import concurrent.futures
 import logging
 import os
 import pathlib
+from pathlib import Path
 import platform
 import shutil
 import subprocess
@@ -30,7 +31,7 @@ from tempfile import TemporaryDirectory, mkdtemp
 
 from tqdm import tqdm
 
-from language_specific import VERTICAL_FONTS
+from src.training.language_specific import VERTICAL_FONTS
 
 log = logging.getLogger(__name__)
 
@@ -76,9 +77,9 @@ def err_exit(msg):
 # if the program file is not found.
 # Usage: run_command CMD ARG1 ARG2...
 def run_command(cmd, *args, env=None):
-    for d in ("", "api/", "training/"):
-        testcmd = shutil.which(f"{d}{cmd}")
-        if shutil.which(testcmd):
+    for d in ("", "api", "training", "C:\\Program Files\\Tesseract-OCR", "C:\\Program Files (x86)\\Tesseract-OCR"):
+        testcmd = shutil.which(os.path.join(d, f"{cmd}.exe"))
+        if testcmd is not None and shutil.which(testcmd):
             cmd = testcmd
             break
     if not shutil.which(cmd):
@@ -107,15 +108,50 @@ def run_command(cmd, *args, env=None):
         err_exit(f"Program {cmd} failed with return code {proc.returncode}. Abort.")
 
 
+# Helper function to run a command and append its output to a log. Aborts early
+# if the program file is not found.
+# Usage: run_command CMD ARG1 ARG2...
+def run_command2(cmd, *args, env=None):
+    for d in ("", "api", "training", "C:\\Program Files\\Tesseract-OCR", "C:\\Program Files (x86)\\Tesseract-OCR"):
+        testcmd = shutil.which(os.path.join(d, f"{cmd}.exe"))
+        if testcmd is not None and shutil.which(testcmd):
+            cmd = testcmd
+            break
+    if not shutil.which(cmd):
+        err_exit(f"{cmd} not found")
+
+    log.debug(f"Running {cmd}")
+    args = list(args)
+    for idx, arg in enumerate(args):
+        log.debug(arg)
+        # Workaround for https://bugs.python.org/issue33617
+        # TypeError: argument of type 'WindowsPath' is not iterable
+        if isinstance(arg, pathlib.WindowsPath):
+            args[idx] = str(arg)
+
+    proc = subprocess.run(
+        [cmd, *args], shell=True,# stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env
+    )
+    proclog = logging.getLogger(cmd)
+    if proc.returncode == 0:
+        proclog.debug(proc.stdout.decode("utf-8", errors="replace"))
+    else:
+        try:
+            proclog.error(proc.stdout.decode("utf-8", errors="replace"))
+        except Exception as e:
+            proclog.error(e)
+        err_exit(f"Program {cmd} failed with return code {proc.returncode}. Abort.")
+
+
 # Check if all the given files exist, or exit otherwise.
 # Used to check required input files and produced output files in each phase.
 # Usage: check_file_readable FILE1 FILE2...
 def check_file_readable(*filenames):
-    if isinstance(filenames, (str, pathlib.Path)):
+    if isinstance(filenames, (str, Path)):
         filenames = [filenames]
     for filename in filenames:
         try:
-            with pathlib.Path(filename).open():
+            with Path(filename).open():
                 pass
         except FileNotFoundError:
             err_exit(f"Required/expected file '{filename}' does not exist")
@@ -221,10 +257,10 @@ parser.add_argument(
 
 
 # Does simple command-line parsing and initialization.
-def parse_flags(argv=None):
+def parse_flags(*args):
     ctx = TrainingArgs()
     log.debug(ctx)
-    parser.parse_args(args=argv, namespace=ctx)
+    parser.parse_args(args=args, namespace=ctx)
     log.debug(ctx)
 
     if not ctx.lang_code:
@@ -250,13 +286,13 @@ def parse_flags(argv=None):
     else:
         ctx.training_dir = mkdtemp(prefix=f"{ctx.lang_code}-{ctx.timestamp}", dir=ctx.tmp_dir)
     # Location of log file for the whole run.
-    ctx.log_file = pathlib.Path(ctx.training_dir) / "tesstrain.log"
+    ctx.log_file = Path(ctx.training_dir) / "tesstrain.log"
     log.info(f"Log file location: {ctx.log_file}")
 
     def show_tmpdir_location(training_dir):
         # On successful exit we will delete this first; on failure we want to let the user
         # know where the log is
-        if pathlib.Path(training_dir).exists():
+        if Path(training_dir).exists():
             print(f"Temporary files retained at: {training_dir}")
 
     atexit.register(show_tmpdir_location, ctx.training_dir)
@@ -265,27 +301,27 @@ def parse_flags(argv=None):
     # specified in the command-line.
     if not ctx.training_text:
         ctx.training_text = (
-                pathlib.Path(ctx.langdata_dir) / ctx.lang_code / f"{ctx.lang_code}.training_text"
+                Path(ctx.langdata_dir) / ctx.lang_code / f"{ctx.lang_code}.training_text"
         )
     if not ctx.wordlist_file:
         ctx.wordlist_file = (
-                pathlib.Path(ctx.langdata_dir) / ctx.lang_code / f"{ctx.lang_code}.wordlist"
+                Path(ctx.langdata_dir) / ctx.lang_code / f"{ctx.lang_code}.wordlist"
         )
 
     ctx.word_bigrams_file = (
-            pathlib.Path(ctx.langdata_dir) / ctx.lang_code / f"{ctx.lang_code}.word.bigrams"
+            Path(ctx.langdata_dir) / ctx.lang_code / f"{ctx.lang_code}.word.bigrams"
     )
     ctx.numbers_file = (
-            pathlib.Path(ctx.langdata_dir) / ctx.lang_code / f"{ctx.lang_code}.numbers"
+            Path(ctx.langdata_dir) / ctx.lang_code / f"{ctx.lang_code}.numbers"
     )
-    ctx.punc_file = pathlib.Path(ctx.langdata_dir) / ctx.lang_code / f"{ctx.lang_code}.punc"
-    ctx.bigram_freqs_file = pathlib.Path(ctx.training_text).with_suffix(
+    ctx.punc_file = Path(ctx.langdata_dir) / ctx.lang_code / f"{ctx.lang_code}.punc"
+    ctx.bigram_freqs_file = Path(ctx.training_text).with_suffix(
         ".training_text.bigram_freqs"
     )
-    ctx.unigram_freqs_file = pathlib.Path(ctx.training_text).with_suffix(
+    ctx.unigram_freqs_file = Path(ctx.training_text).with_suffix(
         ".training_text.unigram_freqs"
     )
-    ctx.train_ngrams_file = pathlib.Path(ctx.training_text).with_suffix(
+    ctx.train_ngrams_file = Path(ctx.training_text).with_suffix(
         ".training_text.train_ngrams"
     )
     ctx.generate_dawgs = 1
@@ -296,13 +332,12 @@ def parse_flags(argv=None):
 def cleanup(ctx):
     shutil.copy(ctx.log_file, ctx.output_dir)
     shutil.rmtree(ctx.training_dir)
-    return
 
 
 # Function initializes font config with a unique font cache dir.
 def initialize_fontconfig(ctx):
-    sample_path = pathlib.Path(ctx.font_config_cache) / "sample_text.txt"
-    pathlib.Path(sample_path).write_text("Text\n")
+    sample_path = Path(ctx.font_config_cache) / "sample_text.txt"
+    Path(sample_path).write_text("Text\n")
     log.info(f"Testing font: {ctx.fonts[0]}")
     run_command(
         "text2image",
@@ -320,7 +355,7 @@ def make_fontname(font):
 
 
 def make_outbase(ctx, fontname, exposure):
-    return pathlib.Path(ctx.training_dir) / f"{ctx.lang_code}.{fontname}.exp{exposure}"
+    return Path(ctx.training_dir) / f"{ctx.lang_code}.{fontname}.exp{exposure}"
 
 
 # Helper function for phaseI_generate_image. Generates the image for a single
@@ -360,7 +395,7 @@ def generate_font_image(ctx, font, exposure, char_spacing):
 
     check_file_readable(str(outbase) + ".box", str(outbase) + ".tif")
 
-    if ctx.extract_font_properties and pathlib.Path(ctx.train_ngrams_file).exists():
+    if ctx.extract_font_properties and Path(ctx.train_ngrams_file).exists():
         log.info(f"Extracting font properties of {font}")
         run_command(
             "text2image",
@@ -385,16 +420,16 @@ def phase_I_generate_image(ctx, par_factor=None):
     char_spacing = 0.0
 
     for exposure in ctx.exposures:
-        if ctx.extract_font_properties and pathlib.Path(ctx.bigram_freqs_file).exists():
+        if ctx.extract_font_properties and Path(ctx.bigram_freqs_file).exists():
             # Parse .bigram_freqs file and compose a .train_ngrams file with text
             # for tesseract to recognize during training. Take only the ngrams whose
             # combined weight accounts for 95% of all the bigrams in the language.
-            lines = pathlib.Path(ctx.bigram_freqs_file).read_text(encoding="utf-8").split("\n")
+            lines = Path(ctx.bigram_freqs_file).read_text(encoding="utf-8").split("\n")
             records = (line.split() for line in lines)
             p = 0.99
             ngram_frac = p * sum(int(rec[1]) for rec in records if len(rec) >= 2)
 
-            with pathlib.Path(ctx.train_ngrams_file).open("w", encoding="utf-8") as f:
+            with Path(ctx.train_ngrams_file).open("w", encoding="utf-8") as f:
                 cumsum = 0
                 for bigram, count in sorted(records, key=itemgetter(1), reverse=True):
                     if cumsum > ngram_frac:
@@ -424,16 +459,15 @@ def phase_I_generate_image(ctx, par_factor=None):
             fontname = make_fontname(font)
             outbase = make_outbase(ctx, fontname, exposure)
             check_file_readable(str(outbase) + ".box", str(outbase) + ".tif")
-    return
 
 
 # Phase UP : Generate (U)nicharset and (P)roperties file.
 def phase_UP_generate_unicharset(ctx):
     log.info("=== Phase UP: Generating unicharset and unichar properties files ===")
 
-    box_files = pathlib.Path(ctx.training_dir).glob("*.box")
+    box_files = Path(ctx.training_dir).glob("*.box")
 
-    ctx.unicharset_file = pathlib.Path(ctx.training_dir) / f"{ctx.lang_code}.unicharset"
+    ctx.unicharset_file = Path(ctx.training_dir) / f"{ctx.lang_code}.unicharset"
 
     run_command(
         "unicharset_extractor",
@@ -445,7 +479,7 @@ def phase_UP_generate_unicharset(ctx):
     )
     check_file_readable(ctx.unicharset_file)
 
-    ctx.xheights_file = pathlib.Path(ctx.training_dir) / f"{ctx.lang_code}.xheights"
+    ctx.xheights_file = Path(ctx.training_dir) / f"{ctx.lang_code}.xheights"
     run_command(
         "set_unicharset_properties",
         "-U",
@@ -535,12 +569,12 @@ def phase_UP_generate_unicharset(ctx):
 def phase_E_extract_features(ctx, box_config, ext):
     log.info(f"=== Phase E: Generating {ext} files ===")
 
-    img_files = list(pathlib.Path(ctx.training_dir).glob("*.exp*.tif"))
+    img_files = list(Path(ctx.training_dir).glob("*.exp*.tif"))
     log.debug(img_files)
 
     # Use any available language-specific configs.
     config = ""
-    testconfig = pathlib.Path(ctx.langdata_dir) / ctx.lang_code / f"{ctx.lang_code}.config"
+    testconfig = Path(ctx.langdata_dir) / ctx.lang_code / f"{ctx.lang_code}.config"
     if testconfig.exists():
         config = testconfig
         log.info(f"Using {ctx.lang_code}.config")
@@ -550,19 +584,18 @@ def phase_E_extract_features(ctx, box_config, ext):
 
     log.info(f"Using TESSDATA_PREFIX={tessdata_environ['TESSDATA_PREFIX']}")
 
-    with tqdm(total=len(img_files)) as pbar, concurrent.futures.ThreadPoolExecutor(
-            max_workers=2
-    ) as executor:
+    with tqdm(total=len(img_files)) as pbar, concurrent.futures.ThreadPoolExecutor() as executor:
         futures = []
         for img_file in img_files:
             future = executor.submit(
                 run_command,
                 "tesseract",
                 img_file,
-                pathlib.Path(img_file).with_suffix(""),
+                Path(img_file).with_suffix(""),
                 *box_config,
                 config,
-                env=tessdata_environ,
+                # envを指定するとエラー出る
+                #env=tessdata_environ,
             )
             futures.append(future)
 
@@ -575,9 +608,7 @@ def phase_E_extract_features(ctx, box_config, ext):
                 pbar.update(1)
     # Check that all the output files were produced.
     for img_file in img_files:
-        check_file_readable(pathlib.Path(img_file.with_suffix("." + ext)))
-
-    return
+        check_file_readable(Path(img_file.with_suffix("." + ext)))
 
 
 # # Phase C : (C)luster feature prototypes in .tr into normproto file (cnTraining)
@@ -663,7 +694,7 @@ def phase_E_extract_features(ctx, box_config, ext):
 def make_lstmdata(ctx):
     log.info("=== Constructing LSTM training data ===")
     lang_prefix = f"{ctx.langdata_dir}/{ctx.lang_code}/{ctx.lang_code}"
-    path_output = pathlib.Path(ctx.output_dir)
+    path_output = Path(ctx.output_dir)
     if not path_output.is_dir():
         log.info(f"Creating new directory {ctx.output_dir}")
         path_output.mkdir(exist_ok=True, parents=True)
@@ -695,7 +726,7 @@ def make_lstmdata(ctx):
     )
 
     def get_file_list():
-        training_path = pathlib.Path(ctx.training_dir)
+        training_path = Path(ctx.training_dir)
         if ctx.save_box_tiff:
             log.info("=== Saving box/tiff pairs for training data ===")
             yield from training_path.glob(f"{ctx.lang_code}*.box")
@@ -709,37 +740,5 @@ def make_lstmdata(ctx):
 
     lstm_list = f"{ctx.output_dir}/{ctx.lang_code}.training_files.txt"
     dir_listing = (str(p) for p in path_output.glob(f"{ctx.lang_code}.*.lstmf"))
-    with pathlib.Path(lstm_list).open(mode="w", encoding="utf-8", newline="\n") as f:
+    with Path(lstm_list).open(mode="w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(dir_listing))
-
-# make__traineddata() {
-#   tlog "\n=== Making final traineddata file ==="
-#   local lang_prefix={ctx.langdata_dir}/${LANG_CODE}/${LANG_CODE}
-
-#   # Combine available files for this language from the langdata dir.
-#   if [[ -r ${lang_prefix}.config ]]; then
-#     tlog "Copying ${lang_prefix}.config to ${TRAINING_DIR}"
-#     cp ${lang_prefix}.config ${TRAINING_DIR}
-#     chmod u+w ${TRAINING_DIR}/${LANG_CODE}.config
-#   fi
-#   if [[ -r ${lang_prefix}.params-model ]]; then
-#     tlog "Copying ${lang_prefix}.params-model to ${TRAINING_DIR}"
-#     cp ${lang_prefix}.params-model ${TRAINING_DIR}
-#     chmod u+w ${TRAINING_DIR}/${LANG_CODE}.params-model
-#   fi
-
-#   # Compose the traineddata file.
-#   run_command combine_tessdata ${TRAINING_DIR}/${LANG_CODE}.
-
-#   # Copy it to the output dir, overwriting only if allowed by the cmdline flag.
-#   if [[ ! -d ${OUTPUT_DIR} ]]; then
-#       tlog "Creating new directory ${OUTPUT_DIR}"
-#       mkdir -p ${OUTPUT_DIR}
-#   fi
-#   local destfile=${OUTPUT_DIR}/${LANG_CODE}.traineddata;
-#   if [[ -f ${destfile} ]] && ((! OVERWRITE)); then
-#       err_exit "File ${destfile} exists and no --overwrite specified";
-#   fi
-#   tlog "Moving ${TRAINING_DIR}/${LANG_CODE}.traineddata to ${OUTPUT_DIR}"
-#   cp -f ${TRAINING_DIR}/${LANG_CODE}.traineddata ${destfile}
-# }

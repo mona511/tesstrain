@@ -38,13 +38,11 @@ import language_specific
 log = logging.getLogger()
 
 
-def setup_logging_console():
+def setup_logging_console(console_level:int=logging.INFO):
     log.setLevel(logging.DEBUG)
     console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
-    console_formatter = logging.Formatter(
-        "[%(asctime)s] %(levelname)s - %(message)s", datefmt="%H:%M:%S"
-    )
+    console.setLevel(console_level)
+    console_formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s", datefmt="%H:%M:%S")
     console.setFormatter(console_formatter)
     log.addHandler(console)
 
@@ -52,17 +50,15 @@ def setup_logging_console():
 def setup_logging_logfile(logfile):
     logfile = logging.FileHandler(logfile, encoding='utf-8')
     logfile.setLevel(logging.DEBUG)
-    logfile_formatter = logging.Formatter(
-        "[%(asctime)s] - %(levelname)s - %(name)s - %(message)s"
-    )
+    logfile_formatter = logging.Formatter("[%(asctime)s] - %(levelname)s - %(name)s - %(message)s")
     logfile.setFormatter(logfile_formatter)
     log.addHandler(logfile)
     return logfile
 
 
-def main():
-    setup_logging_console()
-    ctx = parse_flags()
+def run(console_level:int, *args):
+    setup_logging_console(console_level)
+    ctx = parse_flags(*args)
     logfile = setup_logging_logfile(ctx.log_file)
     if not ctx.linedata:
         log.error("--linedata_only is required since only LSTM is supported")
@@ -83,30 +79,3 @@ def main():
     logfile.close()
     cleanup(ctx)
     log.info("All done!")
-    return 0
-
-
-if __name__ == "__main__":
-    main()
-
-# _rc0 = subprocess.call(["tlog","\n=== Starting training for language '"+str(LANG_CODE.val)+"'"],shell=True)
-# _rc0 = subprocess.call(["source",os.popen("dirname "+__file__).read().rstrip("\n")+"/language-specific.sh"],shell=True)
-# _rc0 = subprocess.call(["set_lang_specific_parameters",str(LANG_CODE.val)],shell=True)
-# _rc0 = subprocess.call(["initialize_fontconfig"],shell=True)
-# _rc0 = subprocess.call(["phase_I_generate_image","8"],shell=True)
-# _rc0 = subprocess.call(["phase_UP_generate_unicharset"],shell=True)
-# if (LINEDATA ):
-# subprocess.call(["phase_E_extract_features"," --psm 6  lstm.train ","8","lstmf"],shell=True)
-#     subprocess.call(["make__lstmdata"],shell=True)
-#     subprocess.call(["tlog","\nCreated starter traineddata for language '"+str(LANG_CODE.val)+"'\n"],shell=True)
-#     subprocess.call(["tlog","\nRun lstmtraining to do the LSTM training for language '"+str(LANG_CODE.val)+"'\n"],shell=True)
-# else:
-#     subprocess.call(["phase_D_generate_dawg"],shell=True)
-#     subprocess.call(["phase_E_extract_features","box.train","8","tr"],shell=True)
-#     subprocess.call(["phase_C_cluster_prototypes",str(TRAINING_DIR.val)+"/"+str(LANG_CODE.val)+".normproto"],shell=True)
-#     if (str(ENABLE_SHAPE_CLUSTERING.val) == "y" ):
-#         subprocess.call(["phase_S_cluster_shapes"],shell=True)
-#     subprocess.call(["phase_M_cluster_microfeatures"],shell=True)
-#     subprocess.call(["phase_B_generate_ambiguities"],shell=True)
-#     subprocess.call(["make__traineddata"],shell=True)
-#     subprocess.call(["tlog","\nCompleted training for language '"+str(LANG_CODE.val)+"'\n"],shell=True)

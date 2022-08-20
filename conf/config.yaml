@@ -1,0 +1,28 @@
+# global
+stage: 0
+# "debug" or "info". default to "info".
+console_level: 
+
+# stage:0
+fonts_dir: 
+
+# stage:1
+lang: 
+fonts: "TakaoGothic"
+langdata_dir: 
+tessdata_dir: 
+training_text:
+output_dir: 
+ptsize: 12
+save_box_tiff: False
+#tesstrain_args: ["--char_spacing=0.5"]
+tesstrain_args: []
+
+# stage:2
+
+# stage:3
+new_lang: 
+max_iterations: 
+
+# stage:4
+checkpoint:
