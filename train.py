@@ -199,7 +199,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--stage",
         type=int,
-        choices=[0,1,2],
+        choices=[0,1,2,3,4],
     )
     parser.add_argument(
         "--config",
